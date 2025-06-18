@@ -1,0 +1,56 @@
+name: Release Terraform Modules
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  detect-and-release:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0  # Needed for tags
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          pip install commitizen
+
+      - name: Detect changed modules
+        id: detect
+        run: |
+          echo "changed_modules=" >> $GITHUB_OUTPUT
+          git diff --name-only HEAD~1 HEAD | cut -d '/' -f1 | sort -u | while read mod; do
+            if [ -f "$mod/version.txt" ]; then
+              echo "Detected module: $mod"
+              echo "$mod" >> changed_modules.txt
+            fi
+          done
+          echo "changed_modules=$(paste -sd ',' changed_modules.txt)" >> $GITHUB_OUTPUT
+
+      - name: Release each module
+        if: steps.detect.outputs.changed_modules != ''
+        env:
+          CHANGED_MODULES: ${{ steps.detect.outputs.changed_modules }}
+        run: |
+          for module in $(echo "$CHANGED_MODULES" | tr ',' '\n'); do
+            echo "Releasing $module..."
+            python scripts/release_module.py $module
+          done
+
+      - name: Commit and push version + changelogs
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+          git add */CHANGELOG.md */version.txt
+          git commit -m "chore: update changelogs and bump versions [ci skip]" || echo "No changes to commit"
+          git push
+          git push --tags
