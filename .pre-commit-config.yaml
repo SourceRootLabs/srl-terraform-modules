@@ -1,0 +1,22 @@
+repos:
+  # Terraform formatting
+  - repo: https://github.com/antonbabenko/pre-commit-terraform
+    rev: v1.99.4  # https://github.com/antonbabenko/pre-commit-terraform/tags
+    hooks:
+      - id: terraform_fmt
+
+  # Python code formatting
+  - repo: https://github.com/psf/black
+    rev: 25.1.0 # https://github.com/psf/black/tags
+    hooks:
+      - id: black
+        files: "scripts/.*\\.py$"
+        verbose: true
+
+  # Conventional Commits validation
+  - repo: https://github.com/compilerla/conventional-pre-commit
+    rev: v4.2.0
+    hooks:
+      - id: conventional-pre-commit
+        stages: [commit-msg]
+        args: [--strict]
