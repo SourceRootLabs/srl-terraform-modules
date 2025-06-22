@@ -1,0 +1,11 @@
+{
+  "always-update": true,
+  "packages": {
+    "random-pet": {
+      "release-type": "terraform-module",
+      "package-name": "random-pet",
+      "changelog-path": "random-pet/CHANGELOG.md",
+      "include-component-in-tag": true
+    }
+  }
+}
