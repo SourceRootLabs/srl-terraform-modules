@@ -1,0 +1,149 @@
+name: Validate Conventional Commits
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  pull-requests: write
+
+jobs:
+  validate-commits:
+    runs-on: ubuntu-latest
+    name: Validate Commit Messages
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          
+      - name: Install commitlint
+        run: |
+          npm install -g @commitlint/cli@17 @commitlint/config-conventional@17
+          
+      - name: Create commitlint config
+        run: |
+          cat > commitlint.config.js << 'EOF'
+          module.exports = {
+            extends: ['@commitlint/config-conventional'],
+            rules: {
+              'type-enum': [2, 'always', [
+                'feat', 'fix', 'docs', 'style', 'refactor', 'perf', 
+                'test', 'build', 'ci', 'chore', 'revert'
+              ]],
+              'subject-case': [0], // Disable case checking
+              'subject-full-stop': [0] // Allow periods at end of subject
+            }
+          };
+          EOF
+          
+      - name: Validate commit messages
+        run: |
+          # Get the base branch (usually main or master)
+          BASE_SHA=$(git merge-base origin/${{ github.base_ref }} HEAD)
+          
+          # Get all commit messages in the PR
+          COMMITS=$(git rev-list --reverse $BASE_SHA..HEAD)
+          
+          echo "Validating commits in PR..."
+          FAILED_COMMITS=""
+          
+          for commit in $COMMITS; do
+            echo "Checking commit: $commit"
+            COMMIT_MSG=$(git log --format=%s -n 1 $commit)
+            echo "Message: '$COMMIT_MSG'"
+            
+            # Test the specific message that's failing
+            if echo "$COMMIT_MSG" | npx commitlint --verbose; then
+              echo "✅ Commit $commit passed"
+            else
+              echo "❌ Commit $commit failed"
+              FAILED_COMMITS="$FAILED_COMMITS\n- $commit: $COMMIT_MSG"
+            fi
+          done
+          
+          if [ ! -z "$FAILED_COMMITS" ]; then
+            echo "❌ The following commits do not follow conventional commit standards:"
+            echo -e "$FAILED_COMMITS"
+            echo ""
+            echo "Conventional commit format: <type>[optional scope]: <description>"
+            echo ""
+            echo "Valid types: feat, fix, docs, style, refactor, perf, test, build, ci, chore, revert"
+            echo ""
+            echo "Examples:"
+            echo "  feat: add user authentication"
+            echo "  fix(api): resolve login endpoint error"
+            echo "  docs: update README installation steps"
+            echo "  refactor!: breaking change to user service"
+            exit 1
+          else
+            echo "✅ All commits follow conventional commit standards!"
+          fi
+          
+      - name: Comment on PR (if validation fails)
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo, number } = context.issue;
+            
+            const comment = `## ❌ Conventional Commit Validation Failed
+            
+            Some commits in this PR don't follow conventional commit standards.
+            
+            ### Required Format
+            \`<type>[optional scope]: <description>\`
+            
+            ### Valid Types
+            - **feat**: A new feature
+            - **fix**: A bug fix
+            - **docs**: Documentation only changes
+            - **style**: Changes that don't affect code meaning (white-space, formatting, etc)
+            - **refactor**: A code change that neither fixes a bug nor adds a feature
+            - **perf**: A code change that improves performance
+            - **test**: Adding missing tests or correcting existing tests
+            - **build**: Changes that affect the build system or external dependencies
+            - **ci**: Changes to CI configuration files and scripts
+            - **chore**: Other changes that don't modify src or test files
+            - **revert**: Reverts a previous commit
+            
+            ### Examples
+            \`\`\`
+            feat: add user authentication
+            fix(api): resolve login endpoint error
+            docs: update README installation steps
+            refactor!: breaking change to user service
+            \`\`\`
+            
+            ### Breaking Changes
+            Add \`!\` after the type/scope for breaking changes, or include \`BREAKING CHANGE:\` in the commit body.
+            
+            Please update your commit messages to follow this format.`;
+            
+            github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: number,
+              body: comment
+            });
+            
+      - name: Comment on PR (if validation passes)
+        if: success()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const { owner, repo, number } = context.issue;
+            
+            github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: number,
+              body: "✅ All commits follow conventional commit standards!"
+            });
